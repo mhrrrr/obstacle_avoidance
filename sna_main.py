@@ -98,7 +98,6 @@ class SnAMain:
 
         self.accelerated = False
         self.acceleratedt1 = 0
-        self.__direction_heading = 1
         
         self.__temp_wp_count = 0
         self.__waypoint_count = 0
@@ -132,19 +131,6 @@ class SnAMain:
         self.__roll = 0 # rad (-pi to pi)
         self.__yaw = 0 # rad (0 to 2pi)
 
-        # Map related parameters
-        #Map generation parameters
-        self.field_x = 1000 # north dimension
-        self.field_y = 1000
-        self.matmap = np.array([[0]*self.field_x]*self.field_y)
-        np.reshape(self.matmap,(self.field_x,self.field_y))
-        self.width_fetcher = 100
-        self.length_fetcher = 100
-        self.relmatmap = np.array([[0]*self.width_fetcher]*self.length_fetcher)
-        self.map_res = 1
-        self.mat_list = []
-
-
         # Front Sensor
         self.__front_sensor = SnADataHandler()
 
@@ -154,7 +140,6 @@ class SnAMain:
         self.obstacle_map_count = []
         self.desired_angle = 0
         self.engaging_distance = 0
-        self.perpendicular_threshold = 3
         self.static_map = False
         self.counter = 0
         
@@ -195,7 +180,7 @@ class SnAMain:
 
         # Thread Variables
         self.__scheduler_update = SchedulerTask(self.update_mission, name='SnA Update Mission', delay=0.0, time_period=0.1)
-        self.__scheduler_receive_radar_data = SchedulerTask(self.__front_sensor.receive_radar_data, name='Receive Radar Data', delay=0.0, time_period=0.15)
+        self.__scheduler_receive_radar_data = SchedulerTask(self.__front_sensor.receive_radar_data, name='Receive Radar Data', delay=0.0, time_period=0.08)
 
 
     
@@ -479,7 +464,7 @@ class SnAMain:
         for i in range(np.size(global_map,axis=0)):
             #Compute Vector
             obstacle_vector = [global_map[i][0]-self.__px,global_map[i][1]-self.__py]
-            
+            print("Obstacle vector: ", obstacle_vector)
             obstacle_vector_magnitude=self.__vector.mag2d(obstacle_vector)
 
             obstacle_mag_in_direc=(np.dot(direc_vec,obstacle_vector)/(self.__vector.mag2d(direc_vec)))
@@ -501,28 +486,6 @@ class SnAMain:
         else:
             return False,obs_min_in_direct
 
-    def obstacle_in_perpendicular(self,direction,points, perpendicular_threshold, direction_threshold):
-        print('isinside',direction)
-        points = np.array(points)
-        direction = direction / np.linalg.norm(direction)
-        perpendicular_direction = np.array([-direction[1], direction[0]])
-
-        vector_to_points = points - np.array([self.__px, self.__py])
-        distances_to_line = np.abs(np.dot(vector_to_points, perpendicular_direction))
-        distances_along_line = np.dot(vector_to_points, direction)
-        print(distances_to_line)
-        print(distances_along_line)
-        valid_distances_along_line = distances_along_line[distances_along_line>0]
-        min_distance_along_line = np.min(valid_distances_along_line)
-
-        if min_distance_along_line > 0 and min_distance_along_line <= direction_threshold:
-            min_distance_index = np.argmin(distances_along_line)
-            if distances_to_line[min_distance_index] <= perpendicular_threshold:
-                return True,min_distance_along_line
-
-        return False,100
-        
-
     
     def update_vars(self):
         """This function acts as a bridge between different class to transfer data. Part of the requirements for 
@@ -533,17 +496,6 @@ class SnAMain:
         if Globals.SITL:
             self.__front_sensor.data = self.__lidar.raw_data
             self.__front_sensor.handle_sitl_sensor_data(1,0.03098,40,1,-0.976)
-
-        else:
-
-            if self.__direction_heading == 1:
-                self.__front_sensor.x = self.__front_sensor.x1
-                self.__front_sensor.y = self.__front_sensor.y1
-            if self.__direction_heading == -1:
-                
-                self.__front_sensor.x = -self.__front_sensor.x2
-                self.__front_sensor.y = -self.__front_sensor.y2
-
 
         self.__front_sensor.pitch = self.__pitch
 
@@ -574,9 +526,8 @@ class SnAMain:
         selfpx_and_selfpy_and_selfpz = str(round(self.__px,2))+','+str(round(self.__py,2))+','+str(round(self.__pz,2))+'{}'
         gps_lat_lon_of_drone = '('+str(self.__lat)+','+str(self.__lon)+')'+'{}'        
     
-        sensor = str(self.__direction_heading) +"{}"
-        accelerated = str(self.accelerated) + "{}"
-        acceleratedt1 = str(self.acceleratedt1) + "{}"
+        
+
         # print('front sensor x', self.front_sensor.X)
         # print('terain alt',round(self.terrainAlt,2))
 
@@ -602,7 +553,7 @@ class SnAMain:
         
         #final_data = "Time," + str(time.time())+'{}' + str(self.log_time1) + '{}' + roll_pitch_yaw_string + terrain_alt_str + selfpx_and_selfpy_and_selfpz +vx_vy_vz  + gps_lat_lon_of_drone  + self.__currentMode + '\n'
 
-        GALogging.info(f'SnALogging : {roll_pitch_yaw_string} {terrain_alt_str} {selfpx_and_selfpy_and_selfpz} {vx_vy_vz}  {self.__currentMode} {sensor} {accelerated} {acceleratedt1} {frontSensorX} {frontSensorY}')
+        GALogging.info(f'SnALogging : {roll_pitch_yaw_string} {terrain_alt_str} {selfpx_and_selfpy_and_selfpz} {vx_vy_vz}  {self.__currentMode} {frontSensorX} {frontSensorY}')
 
         
         # self.csv_file.write(final_data)
@@ -625,7 +576,6 @@ class SnAMain:
         #     self.wpvec = [self.__vx, self.__vy]        
         
         self.wpvec = [self.__vx, self.__vy]
-
        
         
         # try:
@@ -740,80 +690,44 @@ class SnAMain:
             
             # temp = self.__i_waypoints[0]
             # temp_wp_dist_vec=[self.__i_current_waypoint[0]-self.__px-temp[0],self.__i_current_waypoint[1]-self.__py-temp[1]] #used to find if the current vector to next waypoint i
-            if(self.__direction_heading==1):
-                heading = [np.cos(self.__yaw), np.sin(self.__yaw)]
-            elif(self.__direction_heading==-1):
-                heading = [np.cos(self.__yaw+np.pi), np.sin(self.__yaw+np.pi)]
-
+            heading = [np.cos(self.__yaw), np.sin(self.__yaw)]
             bool_temp,self.dist_temp=self.obstacle_in_direction(heading,self.__np_mat_to_list,self.desired_angle,self.engaging_distance) # if any obstacle on the way
-            #bool_temp,self.dist_temp=self.obstacle_in_perpendicular(heading,self.__np_mat_to_list,self.perpendicular_threshold,self.engaging_distance) # if any obstacle on the way
-            
             #print('bool_temp, dist_temp',bool_temp, self.dist_temp, temp_wp_dist_vec)
-            
             if(bool_temp and not self.rolled_right):#and (self.__vx*self.__vx+self.__vy*self.__vy)>2): #if obstacle needs to be avoided
                 self.max_x = self.dist_temp + 8
                 self.init_px = self.__px
                 self.init_py = self.__py
                 
                 print("sending roll command")
-                self.__guided_roll(self.__direction_heading*2)
-                self.roll_counter = 0
-            elif(abs(self.__pitch)<0.05):
-                self.roll_counter+=1
-            
-            if(self.roll_counter>3):            
+                self.__guided_roll(2)
+            else:
                 self.rolled_right = True
                 self.pitched_forward = False
         
             if self.rolled_right and not self.pitched_forward:
                 print("############### max x #################", self.max_x)
-                self.__guided_pitch(self.__direction_heading*self.max_x)
+                self.__guided_pitch(self.max_x)
                 self.rolled_right = False
-                print('pitching distance',self.__direction_heading,self.max_x)
                 #if(bool_temp and self.__vector.mag2d(temp_wp_dist_vec)>abs(self.dist_temp) and not self.pitched_forward):
                 #self.__guided_pitch(0)
                 self.pitched_forward = True
                 self.__mode_changed_to_guided_from_auto = False        
 
-    def navigation_stack(self,obs_inertial):
-        #Angular inertial obstacle vector to grid based reading and that is stored in global map
-        #TODO move this function to front_sensor
-        # #adds dummy navigation_map
-        
-        for dummat in obs_inertial:
-            
-            self.matmap[int(np.round(self.field_y/2-dummat[1]))][int(np.round(dummat[0]+self.field_x/2))]=1 
-        
-    def local_fetcher(self):
-        self.relmatmap = self.matmap[int(np.ceil(self.field_y/2-self.__py-self.length_fetcher/2)):int(np.ceil(self.field_y/2-self.__py+self.length_fetcher/2)),int(np.ceil(self.__px+self.field_x/2-self.width_fetcher/2)):int(np.ceil(self.__px+self.field_x/2+self.width_fetcher/2))]
-        self.map_res=1
-        
-    def local_mat_to_list(self):
-        self.mat_list=[]
-        for i in range(0,len(self.relmatmap)):#no of rows
-            for j in range(0,len(self.relmatmap[0])):
-                if (self.relmatmap[i][j]==1):
-                    self.mat_list.append([-self.width_fetcher/2+j*self.map_res+self.__px,self.length_fetcher/2-i*self.map_res+self.__py])# y is absolute,x is
-    
-
-                
-
     def update_mission(self):
         
+        print(self.__px,self.__py,self.__currentMode)
         if Globals.get_param_val('SNS_ENABLE') == 1:
             self.__sense_and_stop = True
             #print(f"sns: {self.__sense_and_stop}")
         if Globals.get_param_val('SNA_ENABLE') == 1:
             self.__sense_and_avoid = True
             #print(f"sna: {self.__sense_and_avoid}")
-        print('px,py',self.__px,self.__py)
-       
+        
         
         #self.get_mission_coordinates()
         
         self.update_vars() #for transferign variable values across classes clear
-        
-                    
+
         if Globals.SITL:
             
             self.__front_sensor.x = self.__front_sensor.Y  # Gazebo axes are different from real world axes
@@ -825,19 +739,10 @@ class SnAMain:
             self.__braked = 1
         else:
             self.__braked = 0
-        
+
+    
         self.__front_sensor.update_vehicle_states()#gets heading and rotation matrix
         self.heading_vector() #gives heading of drone based on velocity vector some other logic can also be interpreted
-        
-        ###choosing heading ahead or behind direction
-
-        # if(self.__speed>2 and self.__currentMode!='GUIDED'):
-        #     yaw_vector = np.array([np.cos(self.__yaw),np.sin(self.__yaw)])
-        #     if(np.dot(yaw_vector,self.wpvec)>0):
-        #         self.__direction_heading = 1
-        #     else:
-        #         self.__direction_heading = -1
-            
         self.__front_sensor.rotate_body_to_inertial_frame() #returns 3xn matrix containing n obstacles, in inertial frame, on drone origin
         
         
@@ -855,18 +760,6 @@ class SnAMain:
                 self.__np_mat_to_list=obs.T+np.array([self.__px,self.__py]) #array in inertial coordinates
             else:
                 self.__np_mat_to_list=np.array([])
-        
-            # self.__np_mat_to_list = np.array([])
-            
-            ##Enable mapping here else comment out##
-           
-            if(True and not(self.__px ==0 and self.__py == 0 and self.__yaw == 0)): #insert conditions for checking when measurements should be added to map
-                self.navigation_stack(self.__np_mat_to_list)
-            
-            self.local_fetcher()
-            self.local_mat_to_list()
-            self.__np_mat_to_list = np.array(self.mat_list)
-            print('hr2')
 
         if self.counter == 2:
             self.log_data()
@@ -881,35 +774,26 @@ class SnAMain:
 
         # ########### Loiter Mode Stopping #############
 
-        if(self.__currentMode==CopterMode.LOITER):#and self.i_current_waypoint!=0 and self.terrainAlt>2 and self.i_current_waypoint!="TakeOff"):
-            
-            self.desired_angle=20
-            self.engaging_distance=5+self.__speed*3
-
-
-            bool_temp,self.dist_temp=self.obstacle_in_direction(self.wpvec,self.__np_mat_to_list, self.desired_angle,self.engaging_distance) # if any obstacle on the way
-            #bool_temp,self.dist_temp=self.obstacle_in_perpendicular(self.wpvec,self.__np_mat_to_list,self.perpendicular_threshold,self.engaging_distance) # if any obstacle on the way
-            
-            #print('wpvec',self.wpvec,'bool',bool_temp,'distance',self.dist_temp)
-            #self.log_data()
-            #time.sleep(0.1)
-            if(abs(self.__pitch)>0.15):
-                self.accelerated = False
-                self.acceleratedt1 = time.time()
-            else:
-                self.accelerated = True
-            
-
-            dum = time.time()
-
-            if bool_temp and (self.__speed)>2 and self.accelerated == True and dum-self.acceleratedt1>1:
-                if(self.__currentMode==CopterMode.LOITER and self.__currentMode!= CopterMode.GUIDED):
-                    print('sent brake mode request')
-                    # self.__vehicle.mavlink().send_message(mavutil.mavlink.MAVLink_set_mode_message(self.mavlinkInterface.mavConnection.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,4))
-                    self.__change_mode_to_guided()
-                    print('vx,vy',self.__vx,',',self.__vy)
-                    print("Braked with Guided Mode Logic")
-                    #time.sleep(0.1)
+        # if(self.__currentMode==CopterMode.LOITER):#and self.i_current_waypoint!=0 and self.terrainAlt>2 and self.i_current_waypoint!="TakeOff"):
+        #     #if something is in heading direction, within desired angle and engaging distance, then engage brake/switch to guided
+        #     #print('inside loop')
+        #     #temp_wp_dist_vec=[self.i_current_waypoint[0]-self.px-temp[0],self.i_current_waypoint[1]-self.py-temp[1]] #used to find if the current vector to next waypoint i
+        #     #print('inside check loop')
+        #     self.desired_angle=15
+        #     self.engaging_distance=20
+        #     bool_temp,self.dist_temp=self.obstacle_in_direction(self.wpvec,self.__np_mat_to_list, self.desired_angle,self.engaging_distance) # if any obstacle on the way
+        #     #print('wpvec',self.wpvec,'bool',bool_temp,'distance',self.dist_temp)
+        #     #self.log_data()
+        #     #time.sleep(0.1)
+        #     if(bool_temp and (self.__vx*self.__vx+self.__vy*self.__vy)>2):# and self.vec.mag2d(temp_wp_dist_vec)>abs(self.dist_temp)): #if obstacle needs to be avoided
+        #     #if(True):
+        #         if(self.__currentMode==CopterMode.LOITER and self.__currentMode!= CopterMode.GUIDED):
+        #             print('sent brake mode request')
+        #             # self.__vehicle.mavlink().send_message(mavutil.mavlink.MAVLink_set_mode_message(self.mavlinkInterface.mavConnection.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,4))
+        #             self.__change_mode_to_guided()
+        #             print('vx,vy',self.__vx,',',self.__vy)
+        #             print("Braked with Guided Mode Logic")
+        #             #time.sleep(0.1)
                     
 
     ############## Auto mode logic ###############
@@ -921,36 +805,16 @@ class SnAMain:
                 #temp=self.__i_waypoints[0] # means inertial home
                 #print("Error here")
                 # print('inside loop')
-
-                #########################previously tested logic for radar
-                # if(self.__speed>6 and not self.accelerated):
-                #     self.accelerated = True
-                #     self.acceleratedt1 = time.time()
-                    
-                
-                # if(self.__speed<3 and self.accelerated):
-                #     self.accelerated = False
-                #     print('updated acceleration')
-                #######################
-
-                if(abs(self.__pitch)>0.15):
-                    self.accelerated = False
-                    self.acceleratedt1 = time.time()
-                else:
+                if(self.__speed>7 and not self.accelerated):
                     self.accelerated = True
-
-
+                    self.acceleratedt1 = time.time()
             
                 #temp_wp_dist_vec=[self.__i_current_waypoint[0]-self.__px-temp[0],self.__i_current_waypoint[1]-self.__py-temp[1]] #used to find if the current vector to next waypoint i
                 #print('temp wp dist vec: ', temp_wp_dist_vec)
                 #print('values are',temp,temp_wp_dist_vec)
                 self.desired_angle=15
                 self.engaging_distance=30
-
-
                 bool_temp,self.dist_temp=self.obstacle_in_direction(self.wpvec,self.__np_mat_to_list,self.desired_angle,self.engaging_distance) # if any obstacle on the way
-                #bool_temp,self.dist_temp=self.obstacle_in_perpendicular(self.wpvec,self.__np_mat_to_list,self.perpendicular_threshold,self.engaging_distance) # if any obstacle on the way
-            
                 #print('wpvec',self.wpvec,'bool',bool_temp,'distance',self.dist_temp)
                 # print('temp_wp_dist+vec',temp_wp_dist_vec)
                 # print('current_waypoint',self.__i_current_waypoint)
@@ -962,9 +826,7 @@ class SnAMain:
                 #print('vx,vy',self.vx,',',self.vy)
                     # self.max_y = np.max(abs(self.__front_sensor.y))
                     # self.max_x = np.max(abs(self.__front_sensor.x))
-                    # print(self.__front_sensor.x1,self.__front_sensor.y1)
-        
-        
+                    # print("max y: ", self.max_y)
                     
                     if(self.__currentMode is CopterMode.AUTO and not self.__currentMode is CopterMode.GUIDED):
                         #self.log_data()
