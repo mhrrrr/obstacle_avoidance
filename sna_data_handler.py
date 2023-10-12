@@ -108,39 +108,6 @@ class SnADataHandler:
         # print("obstacle y: ", (obs_y))
 
         self.update_obstacle_variables(obs_x, obs_y)
-    
-    def lidar_to_xy(self,lidar_array):
-        """
-        Convert a lidar array to a list of x, y coordinates.
-
-        Parameters:
-            lidar_array (np.array): A list of distance measurements from the lidar sensor.
-
-        Returns:
-            xy_coordinates: An np.array containing x, y coordinates.
-        """
-        xy_coordinates = np.array([[]])
-        
-
-        for index, distance in enumerate(lidar_array):
-            #assumes lidar returns max laser distance if it doesnot detect anything
-            if distance<self.max_range and distance>self.min_range:
-                #converts angle radians based on index and minimum laser angle
-                angle = (index*self.delta_angle+self.init_angle)  # in radians
-                #x is front y is right
-                x = round(distance * math.cos(angle),1)
-                y = round(distance * math.sin(angle),1)
-                #adds as a column of array for obstacles
-                if(np.size(xy_coordinates)==0):
-                    xy_coordinates = np.array([[x,y]])
-
-                else:
-                
-                # Append the elements to the end of the column using np.append()
-                    xy_coordinates = np.vstack((xy_coordinates, np.array([[x,y]])))
-
-        
-        return xy_coordinates
         
 
     def handle_sitl_sensor_data(self, id,delta_angle,max_range,min_range,init_angle):
@@ -211,8 +178,6 @@ class SnADataHandler:
     def combine_multiple_readings(self):
         pass
 
-        
-
     def update_obstacle_variables(self, obs_x, obs_y):
         x=obs_x
         y=obs_y
@@ -220,7 +185,7 @@ class SnADataHandler:
         temp_y = []
         # Consider readings only if x is less than 40m and y is less than 10m (40x10)
         for i in range(0,min(len(x),len(y))):
-            if ((x[i] < (self.terrainAlt -0.8) or x[i] > (self.terrainAlt + 0.8)) and x[i] >1):
+            if ((x[i] < (self.terrainAlt -4.0) or x[i] > (self.terrainAlt + 4.0)) and x[i] >1):
                 temp_x.append(round(x[i],2))
                 temp_y.append(round(y[i],2)) 
                 
@@ -266,16 +231,3 @@ class SnADataHandler:
         except Exception as e:
             GALogging.warn(f"Exception while rotating Obstacle Vector into Inertial frame: {e}")
         
-    # def rotate_body_to_inertial_frame(self,yaw):
-    #     #
-        
-    #     obstacle_vector_body = np.array([self.x,self.y])#3*n,axis 1 means uniqueness along columns
-        
-    #    # print('yaw is',yaw)
-    #     self.b2i_matrix = np.array([[np.cos(yaw), -np.sin(yaw)],[np.sin(yaw), np.cos(yaw)]])
-        
-
-    #     #b2i matrix is responsible for rotating from body to inertial frame
-    #     return(np.dot(self.b2i_matrix,obstacle_vector_body))#3xn,check for uniqueness of columns
-    #     #print(self.b2i_matrix)
-     
