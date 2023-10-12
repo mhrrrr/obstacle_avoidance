@@ -421,7 +421,7 @@ class SnAMain:
                 0, 0, 0, 0, 0
             )
         )
-        print("Rolled right")
+        
 
     def __guided_pitch(self, pitch_distance):
         print("Sending picth command")
@@ -464,7 +464,7 @@ class SnAMain:
         for i in range(np.size(global_map,axis=0)):
             #Compute Vector
             obstacle_vector = [global_map[i][0]-self.__px,global_map[i][1]-self.__py]
-            print("Obstacle vector: ", obstacle_vector)
+            
             obstacle_vector_magnitude=self.__vector.mag2d(obstacle_vector)
 
             obstacle_mag_in_direc=(np.dot(direc_vec,obstacle_vector)/(self.__vector.mag2d(direc_vec)))
@@ -700,20 +700,27 @@ class SnAMain:
                 
                 print("sending roll command")
                 self.__guided_roll(2)
-            else:
+                self.roll_counter = 0
+            elif(abs(self.__pitch)<0.05):
+                self.roll_counter+=1
+            
+            if(self.roll_counter>3):            
                 self.rolled_right = True
                 self.pitched_forward = False
+                print('rolled right')
         
             if self.rolled_right and not self.pitched_forward:
                 print("############### max x #################", self.max_x)
                 self.__guided_pitch(self.max_x)
                 self.rolled_right = False
+                print('pitching distance',self.max_x)
                 #if(bool_temp and self.__vector.mag2d(temp_wp_dist_vec)>abs(self.dist_temp) and not self.pitched_forward):
                 #self.__guided_pitch(0)
                 self.pitched_forward = True
                 self.__mode_changed_to_guided_from_auto = False        
 
     def update_mission(self):
+        
         
         if Globals.get_param_val('SNS_ENABLE') == 1:
             self.__sense_and_stop = True
@@ -765,11 +772,11 @@ class SnAMain:
             self.counter = 0
         else:
             self.counter+=1
-        # self.__np_mat_to_list=[[10, -60],
-        #                             [5, -60],
-        #                             [0, -60],
-        #                             [-5, -60],
-        #                             [-10, -60]]
+        self.__np_mat_to_list=[[0, -40],
+                                    [5, -40],
+                                    [0, -40],
+                                    [-5, -40],
+                                    [-10, -40]]
 
         # ########### Loiter Mode Stopping #############
 
@@ -793,6 +800,42 @@ class SnAMain:
         #             print('vx,vy',self.__vx,',',self.__vy)
         #             print("Braked with Guided Mode Logic")
         #             #time.sleep(0.1)
+
+
+        print('accelrated',self.accelerated,self.__pitch)
+    
+        if(self.__currentMode==CopterMode.LOITER):#and self.i_current_waypoint!=0 and self.terrainAlt>2 and self.i_current_waypoint!="TakeOff"):
+            
+            self.desired_angle=20
+            self.engaging_distance=5+self.__speed*3
+
+
+            bool_temp,self.dist_temp=self.obstacle_in_direction(self.wpvec,self.__np_mat_to_list, self.desired_angle,self.engaging_distance) # if any obstacle on the way
+            #bool_temp,self.dist_temp=self.obstacle_in_perpendicular(self.wpvec,self.__np_mat_to_list,self.perpendicular_threshold,self.engaging_distance) # if any obstacle on the way
+            
+            #print('wpvec',self.wpvec,'bool',bool_temp,'distance',self.dist_temp)
+            #self.log_data()
+            #time.sleep(0.1)
+            if(abs(self.__pitch)>0.3):
+                self.accelerated = False
+                self.acceleratedt1 = time.time()
+            else:
+                self.accelerated = True
+            
+
+            t1 = time.time()
+
+            if bool_temp and (self.__speed)>2 and self.accelerated == True and t1-self.acceleratedt1>1:
+                if(self.__currentMode==CopterMode.LOITER and self.__currentMode!= CopterMode.GUIDED):
+                    print('sent brake mode request')
+                    # self.__vehicle.mavlink().send_message(mavutil.mavlink.MAVLink_set_mode_message(self.mavlinkInterface.mavConnection.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,4))
+                    self.__change_mode_to_guided()
+                    print('vx,vy',self.__vx,',',self.__vy)
+                    print("Braked with Guided Mode Logic")
+                    #time.sleep(0.1)
+                    self.accelerated = False
+                    self.acceleratedt1 = 0 
+    
                     
 
     ############## Auto mode logic ###############
@@ -804,9 +847,15 @@ class SnAMain:
                 #temp=self.__i_waypoints[0] # means inertial home
                 #print("Error here")
                 # print('inside loop')
-                if(self.__speed>7 and not self.accelerated):
-                    self.accelerated = True
+                # if(self.__speed>7 and not self.accelerated):
+                #     self.accelerated = True
+                #     self.acceleratedt1 = time.time()
+
+                if(abs(self.__pitch)>0.3):
+                    self.accelerated = False
                     self.acceleratedt1 = time.time()
+                else:
+                    self.accelerated = True
             
                 #temp_wp_dist_vec=[self.__i_current_waypoint[0]-self.__px-temp[0],self.__i_current_waypoint[1]-self.__py-temp[1]] #used to find if the current vector to next waypoint i
                 #print('temp wp dist vec: ', temp_wp_dist_vec)
@@ -843,9 +892,9 @@ class SnAMain:
                         #GALogging.info("Braked after px: ", self.__px)
                         #self.roll_right = True
                         #self.__avoidance_mode == 1  
-        else:
-            self.accelerated = False
-            self.acceleratedt1 = 0   
+                        self.accelerated = False
+                        self.acceleratedt1 = 0 
+              
 
         # # # Avoidance Logic
         
