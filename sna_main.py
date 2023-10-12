@@ -715,6 +715,7 @@ class SnAMain:
 
     def update_mission(self):
         
+        print(self.__px,self.__py,self.__currentMode)
         if Globals.get_param_val('SNS_ENABLE') == 1:
             self.__sense_and_stop = True
             #print(f"sns: {self.__sense_and_stop}")
